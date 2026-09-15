@@ -50,6 +50,12 @@ export default function CrosswordGame() {
   const puzzleRef = useRef(puzzle);
   const userInputRef = useRef(userInput);
   const hiddenInputRef = useRef<HTMLInputElement | null>(null);
+  const isComposingRef = useRef(false);
+  const numberBufferRef = useRef("");
+  const numberTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const solvedWordKeysRef = useRef<Set<string>>(new Set());
+  const activeWordRef = useRef<PlacedWord | null>(null);
+  const [pulseWordKey, setPulseWordKey] = useState<string | null>(null);
 
   useEffect(() => {
     puzzleRef.current = puzzle;
@@ -57,6 +63,11 @@ export default function CrosswordGame() {
   useEffect(() => {
     userInputRef.current = userInput;
   }, [userInput]);
+  useEffect(() => {
+    return () => {
+      if (numberTimeoutRef.current) clearTimeout(numberTimeoutRef.current);
+    };
+  }, []);
 
   const resetPuzzle = useCallback(() => {
     const next = generateCrossword({ wordCount: 10 });
@@ -71,6 +82,8 @@ export default function CrosswordGame() {
     setSolved(false);
     setPlayerName("");
     setSubmitStatus("idle");
+    solvedWordKeysRef.current = new Set();
+    setPulseWordKey(null);
   }, []);
 
   useEffect(() => {
@@ -99,6 +112,10 @@ export default function CrosswordGame() {
     );
   }, [selected, direction, puzzle.words]);
 
+  useEffect(() => {
+    activeWordRef.current = activeWord;
+  }, [activeWord]);
+
   const highlighted = useMemo(() => {
     const set = new Set<string>();
     if (activeWord) {
@@ -110,6 +127,19 @@ export default function CrosswordGame() {
     }
     return set;
   }, [activeWord]);
+
+  const pulsingCells = useMemo(() => {
+    const set = new Set<string>();
+    if (!pulseWordKey) return set;
+    const w = puzzle.words.find((x) => `${x.direction}-${x.number}` === pulseWordKey);
+    if (!w) return set;
+    for (let i = 0; i < w.word.length; i++) {
+      const r = w.direction === "down" ? w.row + i : w.row;
+      const c = w.direction === "across" ? w.col + i : w.col;
+      set.add(`${r},${c}`);
+    }
+    return set;
+  }, [pulseWordKey, puzzle.words]);
 
   const isWordSolved = useCallback(
     (w: PlacedWord) => {
@@ -262,6 +292,33 @@ export default function CrosswordGame() {
     }
   }, [wordDirectionsAt]);
 
+  // Buffers digits typed in quick succession so double-digit clue numbers
+  // (e.g. 10, 11) can be entered before jumping, instead of jumping on the
+  // very first keystroke.
+  const jumpToNumber = useCallback(
+    (num: number) => {
+      const p = puzzleRef.current;
+      const candidates = p.words.filter((w) => w.number === num);
+      if (candidates.length === 0) return;
+      const preferred = candidates.find((w) => w.direction === directionRef.current) ?? candidates[0];
+      moveTo(preferred.row, preferred.col, preferred.direction);
+    },
+    [moveTo]
+  );
+
+  const handleDigitKey = useCallback(
+    (digit: string) => {
+      numberBufferRef.current += digit;
+      if (numberTimeoutRef.current) clearTimeout(numberTimeoutRef.current);
+      numberTimeoutRef.current = setTimeout(() => {
+        const num = parseInt(numberBufferRef.current, 10);
+        numberBufferRef.current = "";
+        if (!Number.isNaN(num)) jumpToNumber(num);
+      }, 400);
+    },
+    [jumpToNumber]
+  );
+
   useEffect(() => {
     if (solved) return;
     let allFilled = true;
@@ -279,6 +336,37 @@ export default function CrosswordGame() {
       setSolved(true);
     }
   }, [userInput, puzzle, solved]);
+
+  // Per-word completion: flashes the cells and, if the word you just finished
+  // was the active one, jumps ahead to the next word that isn't solved yet.
+  useEffect(() => {
+    for (const w of puzzle.words) {
+      const key = `${w.direction}-${w.number}`;
+      if (!isWordSolved(w)) {
+        solvedWordKeysRef.current.delete(key);
+        continue;
+      }
+      if (solvedWordKeysRef.current.has(key)) continue;
+
+      solvedWordKeysRef.current.add(key);
+      setPulseWordKey(key);
+      setTimeout(() => {
+        setPulseWordKey((k) => (k === key ? null : k));
+      }, 650);
+
+      const active = activeWordRef.current;
+      if (active && active.direction === w.direction && active.number === w.number) {
+        const idx = puzzle.words.findIndex((x) => x.direction === w.direction && x.number === w.number);
+        for (let s = 1; s <= puzzle.words.length; s++) {
+          const candidate = puzzle.words[(idx + s) % puzzle.words.length];
+          if (!isWordSolved(candidate)) {
+            moveTo(candidate.row, candidate.col, candidate.direction);
+            break;
+          }
+        }
+      }
+    }
+  }, [userInput, puzzle, isWordSolved, moveTo]);
 
   // Much gentler decay than a raw per-second countdown: about a third of a
   // point per second, so a few minutes of play barely dents the score.
@@ -310,7 +398,7 @@ export default function CrosswordGame() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 lg:flex-row lg:items-start lg:justify-center">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 md:flex-row md:items-start md:justify-center">
       <div className="flex min-w-0 flex-1 flex-col items-center gap-4">
         <div className="flex w-full items-center justify-between gap-4 rounded-lg bg-violet-100 px-4 py-2 text-violet-900 dark:bg-violet-900/60 dark:text-violet-100">
           <span className="font-mono text-lg tabular-nums">⏱ {formatTime(elapsedSeconds)}</span>
@@ -331,7 +419,21 @@ export default function CrosswordGame() {
             ref={hiddenInputRef}
             value=""
             onChange={(e) => {
+              // While composing an accented/dead-key character (this is how
+              // Ñ often arrives on physical keyboards without a direct key,
+              // and on some IMEs), onChange fires with an incomplete
+              // intermediate value. Wait for onCompositionEnd instead.
+              if (isComposingRef.current) return;
               const val = e.target.value;
+              e.currentTarget.value = "";
+              if (val) handleLetterInput(val);
+            }}
+            onCompositionStart={() => {
+              isComposingRef.current = true;
+            }}
+            onCompositionEnd={(e) => {
+              isComposingRef.current = false;
+              const val = e.currentTarget.value;
               e.currentTarget.value = "";
               if (val) handleLetterInput(val);
             }}
@@ -345,6 +447,9 @@ export default function CrosswordGame() {
               } else if (e.key.startsWith("Arrow")) {
                 e.preventDefault();
                 handleArrowKey(e.key);
+              } else if (/^[0-9]$/.test(e.key)) {
+                e.preventDefault();
+                handleDigitKey(e.key);
               }
             }}
             inputMode="text"
@@ -358,7 +463,7 @@ export default function CrosswordGame() {
 
           <div
             className="mx-auto grid w-fit touch-manipulation gap-[3px] rounded-md bg-violet-200 p-[3px] dark:bg-violet-800/70"
-            style={{ gridTemplateColumns: `repeat(${puzzle.cols}, minmax(1.9rem, 3.4rem))` }}
+            style={{ gridTemplateColumns: `repeat(${puzzle.cols}, minmax(1.75rem, 2.75rem))` }}
           >
             {Array.from({ length: puzzle.rows }).map((_, r) =>
               Array.from({ length: puzzle.cols }).map((_, c) => {
@@ -366,6 +471,7 @@ export default function CrosswordGame() {
                 const number = puzzle.numbers[r][c];
                 const isHighlighted = highlighted.has(`${r},${c}`);
                 const isSelected = sameCell(selected, { row: r, col: c });
+                const isPulsing = pulsingCells.has(`${r},${c}`);
                 const value = userInput[r]?.[c] ?? "";
                 const isWrong = value !== "" && value !== puzzle.solution[r]?.[c];
 
@@ -373,21 +479,25 @@ export default function CrosswordGame() {
                   return <div key={`${r}-${c}`} className="aspect-square bg-transparent" />;
                 }
 
+                let bgClass = "bg-white dark:bg-zinc-900";
+                if (isHighlighted) bgClass = "bg-violet-100 dark:bg-violet-800/60";
+                if (isWrong) bgClass = "bg-rose-100 dark:bg-rose-900/50";
+                if (isPulsing) bgClass = "bg-violet-300 dark:bg-violet-500/80";
+                if (isSelected) bgClass = "bg-violet-500 ring-2 ring-inset ring-violet-900 dark:bg-violet-400 dark:ring-violet-100";
+
+                let textClass = "text-zinc-900 dark:text-zinc-50";
+                if (isWrong) textClass = "text-rose-700 dark:text-rose-300";
+                if (isSelected) textClass = "text-white dark:text-violet-950";
+
                 return (
                   <div
                     key={`${r}-${c}`}
                     onMouseDown={(e) => {
                       handleCellMouseDown(r, c, e);
                     }}
-                    className={`relative aspect-square cursor-pointer select-none ${
-                      isSelected
-                        ? "bg-violet-500 ring-2 ring-inset ring-violet-900 dark:bg-violet-400 dark:ring-violet-100"
-                        : isWrong
-                          ? "bg-rose-100 dark:bg-rose-900/50"
-                          : isHighlighted
-                            ? "bg-violet-100 dark:bg-violet-800/60"
-                            : "bg-white dark:bg-zinc-900"
-                    }`}
+                    className={`relative aspect-square cursor-pointer select-none transition-transform duration-300 ${
+                      isPulsing ? "scale-110" : "scale-100"
+                    } ${bgClass}`}
                   >
                     {number && (
                       <span
@@ -398,15 +508,7 @@ export default function CrosswordGame() {
                         {number}
                       </span>
                     )}
-                    <span
-                      className={`flex h-full w-full items-center justify-center font-mono text-xl font-bold uppercase sm:text-2xl ${
-                        isSelected
-                          ? "text-white dark:text-violet-950"
-                          : isWrong
-                            ? "text-rose-700 dark:text-rose-300"
-                            : "text-zinc-900 dark:text-zinc-50"
-                      }`}
-                    >
+                    <span className={`flex h-full w-full items-center justify-center font-mono text-xl font-bold uppercase sm:text-2xl ${textClass}`}>
                       {value}
                     </span>
                   </div>
@@ -446,7 +548,7 @@ export default function CrosswordGame() {
         )}
       </div>
 
-      <div className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
+      <div className="flex w-full flex-col gap-4 md:w-72 md:shrink-0">
         <div className="rounded-lg border border-violet-200 bg-white p-4 dark:border-violet-800 dark:bg-violet-950/40">
           <ClueColumn
             title="Horizontales"
