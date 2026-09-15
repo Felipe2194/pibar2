@@ -178,7 +178,7 @@ export default function CrosswordGame() {
   // direction on its own — that's reserved for an explicit click on the cell
   // that was already selected (see handleCellMouseDown).
   const moveTo = useCallback(
-    (row: number, col: number, forcedDirection?: Direction) => {
+    (row: number, col: number, forcedDirection?: Direction, options?: { skipFocus?: boolean }) => {
       if (isBlockedAt(row, col)) return;
       let nextDir = forcedDirection ?? directionRef.current;
       if (!forcedDirection) {
@@ -190,10 +190,19 @@ export default function CrosswordGame() {
       selectedRef.current = { row, col };
       setDirection(nextDir);
       setSelected({ row, col });
-      focusHiddenInput();
+      if (!options?.skipFocus) focusHiddenInput();
     },
     [isBlockedAt, wordDirectionsAt, focusHiddenInput]
   );
+
+  // Start every puzzle with the first clue already selected, instead of an
+  // empty grid the player has to tap into first. Skips focusing the hidden
+  // input so the on-screen keyboard doesn't pop up before the player taps.
+  useEffect(() => {
+    const first = puzzle.words[0];
+    if (first) moveTo(first.row, first.col, first.direction, { skipFocus: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [puzzle]);
 
   const handleCellMouseDown = useCallback(
     (row: number, col: number, e: React.MouseEvent) => {
@@ -403,7 +412,11 @@ export default function CrosswordGame() {
         <div className="relative w-full overflow-x-auto">
           {/* Single always-focused input driving all keyboard entry. Grid cells
               below are plain divs — no per-cell input, so focus never bounces
-              between elements and can't fight with our own selection state. */}
+              between elements and can't fight with our own selection state.
+              Sized to cover the grid (not screen-reader-only/clipped to 1px):
+              some mobile browsers won't reliably keep focus or show the
+              keyboard on a zero-size element. pointer-events-none lets clicks
+              pass through to the cells' own onMouseDown handlers. */}
           <input
             ref={hiddenInputRef}
             value=""
@@ -442,9 +455,9 @@ export default function CrosswordGame() {
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
-            autoCapitalize="characters"
             aria-hidden="true"
-            className="sr-only"
+            tabIndex={-1}
+            className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-transparent p-0 text-transparent caret-transparent opacity-0 outline-none"
           />
 
           <div
