@@ -23,11 +23,15 @@ export interface CrosswordPuzzle {
 }
 
 function normalizeWord(raw: string): string {
+  // NFD decomposes Ñ into N + a combining tilde, which the accent-stripping
+  // regex below would otherwise remove. Protect it with a placeholder first.
+  const ENIE_PLACEHOLDER = "";
   return raw
     .toUpperCase()
+    .replace(/Ñ/g, ENIE_PLACEHOLDER)
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // strip accents but keep Ñ (handled below)
-    .replace(/N~/g, "Ñ");
+    .replace(/[̀-ͯ]/g, "")
+    .replace(new RegExp(ENIE_PLACEHOLDER, "g"), "Ñ");
 }
 
 interface SparseCell {

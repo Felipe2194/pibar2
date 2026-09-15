@@ -67,4 +67,31 @@ export const FOOTBALL_WORD_BANK: WordClue[] = [
   { word: "TRIBUNA", clue: "Sector del estadio donde se sientan los hinchas" },
   { word: "RELATOR", clue: "El que narra el partido por radio o televisión" },
   { word: "FUERA", clue: "Cuando la pelota sale de la cancha" },
+
+  // Balón de Oro
+  { word: "CRISTIANO", clue: "Rival histórico de Messi, ganador de 5 Balones de Oro" },
+  { word: "MODRIC", clue: "Croata que cortó la racha Messi-Cristiano y ganó el Balón de Oro 2018" },
+  { word: "BENZEMA", clue: "Delantero francés, Balón de Oro 2022" },
+  { word: "KAKA", clue: "Brasileño, Balón de Oro 2007" },
+  { word: "RONALDINHO", clue: "Brasileño de sonrisa inolvidable, Balón de Oro 2005" },
+  { word: "ZIDANE", clue: "Balón de Oro 1998, hoy reconocido como entrenador" },
+  { word: "NEYMAR", clue: "Estrella brasileña que jugó en Barcelona, PSG y Al-Hilal" },
+  { word: "MBAPPE", clue: "Delantero francés, campeón del mundo en 2018 siendo muy joven" },
+  { word: "HAALAND", clue: "Delantero noruego goleador del Manchester City" },
+  { word: "LEWANDOWSKI", clue: "Goleador histórico polaco del Bayern Múnich" },
+
+  // Goleadores históricos
+  { word: "KLOSE", clue: "Alemán, máximo goleador histórico de los Mundiales" },
+  { word: "GIROUD", clue: "Máximo goleador histórico de la selección de Francia" },
+  { word: "PELE", clue: "Leyenda brasileña tricampeón del mundo" },
+  { word: "BATISTUTA", clue: "Goleador histórico argentino apodado 'Bati Gol'" },
+
+  // Selecciones campeonas del mundo
+  { word: "ARGENTINA", clue: "Selección campeona del mundo en 1978, 1986 y 2022" },
+  { word: "BRASIL", clue: "Selección con más títulos mundiales: cinco" },
+  { word: "ALEMANIA", clue: "Selección campeona del mundo en 2014" },
+  { word: "FRANCIA", clue: "Selección campeona del mundo en 1998 y 2018" },
+  { word: "URUGUAY", clue: "Ganó el primer Mundial de la historia, en 1930" },
+  { word: "ESPAÑA", clue: "Selección campeona del mundo en 2010" },
+  { word: "ITALIA", clue: "Selección campeona del mundo en 2006" },
 ];

@@ -39,8 +39,8 @@ export default function Leaderboard({ refreshKey }: { refreshKey: number }) {
   }, [refreshKey]);
 
   return (
-    <div className="w-full max-w-xs rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-zinc-500">Tabla de posiciones</h3>
+    <div className="w-full rounded-lg border border-violet-200 bg-white p-4 dark:border-violet-800 dark:bg-violet-950/40">
+      <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-violet-500 dark:text-violet-400">Tabla de posiciones</h3>
       {error && <p className="text-sm text-zinc-500">No se pudo cargar la tabla.</p>}
       {!error && entries === null && <p className="text-sm text-zinc-500">Cargando…</p>}
       {entries && entries.length === 0 && <p className="text-sm text-zinc-500">Todavía nadie anotó un puntaje. ¡Sé el primero!</p>}
@@ -49,12 +49,12 @@ export default function Leaderboard({ refreshKey }: { refreshKey: number }) {
           {entries.map((entry, i) => (
             <li key={entry.id} className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-2 truncate">
-                <span className="w-5 text-right font-mono text-zinc-400">{i + 1}.</span>
-                <span className="truncate font-medium">{entry.name}</span>
+                <span className="w-5 text-right font-mono text-violet-400">{i + 1}.</span>
+                <span className="truncate font-medium text-zinc-700 dark:text-zinc-200">{entry.name}</span>
               </span>
               <span className="flex shrink-0 gap-2 font-mono text-xs text-zinc-500">
                 <span>{formatTime(entry.timeSeconds)}</span>
-                <span className="font-semibold text-emerald-600">{entry.score}</span>
+                <span className="font-semibold text-violet-600 dark:text-violet-300">{entry.score}</span>
               </span>
             </li>
           ))}
