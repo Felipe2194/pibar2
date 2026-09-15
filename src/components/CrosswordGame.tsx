@@ -281,17 +281,6 @@ export default function CrosswordGame() {
     [step, moveTo]
   );
 
-  const toggleDirectionInPlace = useCallback(() => {
-    const cell = selectedRef.current;
-    if (!cell) return;
-    const { hasAcross, hasDown } = wordDirectionsAt(cell.row, cell.col);
-    if (hasAcross && hasDown) {
-      const toggled: Direction = directionRef.current === "across" ? "down" : "across";
-      directionRef.current = toggled;
-      setDirection(toggled);
-    }
-  }, [wordDirectionsAt]);
-
   // Buffers digits typed in quick succession so double-digit clue numbers
   // (e.g. 10, 11) can be entered before jumping, instead of jumping on the
   // very first keystroke.
@@ -441,9 +430,6 @@ export default function CrosswordGame() {
               if (e.key === "Backspace") {
                 e.preventDefault();
                 handleBackspace();
-              } else if (e.key === " ") {
-                e.preventDefault();
-                toggleDirectionInPlace();
               } else if (e.key.startsWith("Arrow")) {
                 e.preventDefault();
                 handleArrowKey(e.key);
@@ -596,6 +582,8 @@ function ClueColumn({
           return (
             <li key={`${w.direction}-${w.number}`}>
               <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onSelect(w)}
                 className={`flex w-full items-start gap-1.5 rounded px-2 py-1 text-left transition-colors ${
                   isActive
