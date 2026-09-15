@@ -162,6 +162,24 @@ export default function CrosswordGame() {
     []
   );
 
+  // A cell "locks" once it holds its correct letter, so a right answer can
+  // never be typed over or erased by accident (or by a sibling word sharing
+  // the same intersection cell).
+  const isCellLocked = useCallback((row: number, col: number) => {
+    const solutionLetter = puzzleRef.current.solution[row]?.[col];
+    if (!solutionLetter) return false;
+    return userInputRef.current[row]?.[col] === solutionLetter;
+  }, []);
+
+  const isWordSolvedRef = useCallback((w: PlacedWord) => {
+    for (let i = 0; i < w.word.length; i++) {
+      const r = w.direction === "down" ? w.row + i : w.row;
+      const c = w.direction === "across" ? w.col + i : w.col;
+      if ((userInputRef.current[r]?.[c] ?? "") !== w.word[i]) return false;
+    }
+    return true;
+  }, []);
+
   const step = useCallback((row: number, col: number, dr: number, dc: number): Cell | null => {
     const p = puzzleRef.current;
     let r = row + dr;
@@ -224,32 +242,59 @@ export default function CrosswordGame() {
     [isBlockedAt, wordDirectionsAt, moveTo, focusHiddenInput]
   );
 
+  // Steps forward from (row, col) — skipping any already-correct, locked
+  // cells — and returns the first editable one, or null if the direction
+  // runs out (every remaining cell in that word is already locked).
+  const findEditableCell = useCallback(
+    (row: number, col: number, dr: number, dc: number): Cell | null => {
+      let cell: Cell | null = { row, col };
+      while (cell && isCellLocked(cell.row, cell.col)) {
+        cell = step(cell.row, cell.col, dr, dc);
+      }
+      return cell;
+    },
+    [isCellLocked, step]
+  );
+
   const handleLetterInput = useCallback(
     (raw: string) => {
       const cell = selectedRef.current;
       if (!cell) return;
       const letter = raw.slice(-1).toUpperCase();
       if (!LETTER_REGEX.test(letter)) return;
-      const { row, col } = cell;
+
+      const dir = directionRef.current;
+      const dr = dir === "down" ? 1 : 0;
+      const dc = dir === "across" ? 1 : 0;
+
+      // If we're sitting on an already-correct cell (e.g. filled in from a
+      // crossing word), skip forward to the next editable one instead of
+      // overwriting it.
+      const editable = findEditableCell(cell.row, cell.col, dr, dc);
+      if (!editable) return;
+
+      const { row, col } = editable;
       setUserInput((prev) => {
         const next = prev.map((r) => [...r]);
         next[row][col] = letter;
         return next;
       });
-      const dir = directionRef.current;
-      const dr = dir === "down" ? 1 : 0;
-      const dc = dir === "across" ? 1 : 0;
       const nextCell = step(row, col, dr, dc);
-      if (nextCell) moveTo(nextCell.row, nextCell.col, dir);
+      const nextEditable = nextCell ? findEditableCell(nextCell.row, nextCell.col, dr, dc) : null;
+      moveTo(nextEditable ? nextEditable.row : row, nextEditable ? nextEditable.col : col, dir);
     },
-    [step, moveTo]
+    [step, moveTo, findEditableCell]
   );
 
   const handleBackspace = useCallback(() => {
     const cell = selectedRef.current;
     if (!cell) return;
     const { row, col } = cell;
-    if (userInputRef.current[row]?.[col]) {
+    const dir = directionRef.current;
+    const dr = dir === "down" ? -1 : 0;
+    const dc = dir === "across" ? -1 : 0;
+
+    if (!isCellLocked(row, col) && userInputRef.current[row]?.[col]) {
       setUserInput((prev) => {
         const next = prev.map((r) => [...r]);
         next[row][col] = "";
@@ -257,10 +302,13 @@ export default function CrosswordGame() {
       });
       return;
     }
-    const dir = directionRef.current;
-    const dr = dir === "down" ? -1 : 0;
-    const dc = dir === "across" ? -1 : 0;
-    const prevCell = step(row, col, dr, dc);
+
+    // Current cell is empty or locked (can't erase a correct letter) — step
+    // back to the nearest editable cell and clear that one instead.
+    let prevCell = step(row, col, dr, dc);
+    while (prevCell && isCellLocked(prevCell.row, prevCell.col)) {
+      prevCell = step(prevCell.row, prevCell.col, dr, dc);
+    }
     if (prevCell) {
       setUserInput((prev) => {
         const next = prev.map((r) => [...r]);
@@ -269,7 +317,7 @@ export default function CrosswordGame() {
       });
       moveTo(prevCell.row, prevCell.col, dir);
     }
-  }, [step, moveTo]);
+  }, [step, moveTo, isCellLocked]);
 
   const handleArrowKey = useCallback(
     (key: string) => {
@@ -298,10 +346,24 @@ export default function CrosswordGame() {
       const p = puzzleRef.current;
       const candidates = p.words.filter((w) => w.number === num);
       if (candidates.length === 0) return;
-      const preferred = candidates.find((w) => w.direction === directionRef.current) ?? candidates[0];
-      moveTo(preferred.row, preferred.col, preferred.direction);
+      let target = candidates.find((w) => w.direction === directionRef.current) ?? candidates[0];
+
+      // Don't send the player back to a clue they've already solved — hop
+      // forward to the next unsolved one instead.
+      if (isWordSolvedRef(target)) {
+        const idx = p.words.findIndex((w) => w.direction === target.direction && w.number === target.number);
+        for (let s = 1; s <= p.words.length; s++) {
+          const candidate = p.words[(idx + s) % p.words.length];
+          if (!isWordSolvedRef(candidate)) {
+            target = candidate;
+            break;
+          }
+        }
+      }
+
+      moveTo(target.row, target.col, target.direction);
     },
-    [moveTo]
+    [moveTo, isWordSolvedRef]
   );
 
   const handleDigitKey = useCallback(
@@ -473,6 +535,7 @@ export default function CrosswordGame() {
                 const isPulsing = pulsingCells.has(`${r},${c}`);
                 const value = userInput[r]?.[c] ?? "";
                 const isWrong = value !== "" && value !== puzzle.solution[r]?.[c];
+                const isLocked = isCellLocked(r, c);
 
                 if (blocked) {
                   return <div key={`${r}-${c}`} className="aspect-square bg-transparent" />;
@@ -484,7 +547,10 @@ export default function CrosswordGame() {
                 if (isPulsing) bgClass = "bg-violet-300 dark:bg-violet-500/80";
                 if (isSelected) bgClass = "bg-violet-500 ring-2 ring-inset ring-violet-900 dark:bg-violet-400 dark:ring-violet-100";
 
+                // Correct, locked-in letters get a confirming violet tint
+                // instead of plain text, so it reads as "done" at a glance.
                 let textClass = "text-zinc-900 dark:text-zinc-50";
+                if (isLocked) textClass = "text-violet-600 dark:text-violet-300";
                 if (isWrong) textClass = "text-rose-700 dark:text-rose-300";
                 if (isSelected) textClass = "text-white dark:text-violet-950";
 
