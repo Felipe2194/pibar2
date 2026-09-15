@@ -196,7 +196,7 @@ export default function CrosswordGame() {
   // direction on its own — that's reserved for an explicit click on the cell
   // that was already selected (see handleCellMouseDown).
   const moveTo = useCallback(
-    (row: number, col: number, forcedDirection?: Direction, options?: { skipFocus?: boolean }) => {
+    (row: number, col: number, forcedDirection?: Direction) => {
       if (isBlockedAt(row, col)) return;
       let nextDir = forcedDirection ?? directionRef.current;
       if (!forcedDirection) {
@@ -208,17 +208,18 @@ export default function CrosswordGame() {
       selectedRef.current = { row, col };
       setDirection(nextDir);
       setSelected({ row, col });
-      if (!options?.skipFocus) focusHiddenInput();
+      focusHiddenInput();
     },
     [isBlockedAt, wordDirectionsAt, focusHiddenInput]
   );
 
-  // Start every puzzle with the first clue already selected, instead of an
-  // empty grid the player has to tap into first. Skips focusing the hidden
-  // input so the on-screen keyboard doesn't pop up before the player taps.
+  // Start every puzzle with the first clue already selected AND focused, so
+  // typing works immediately without an extra tap. Programmatic focus like
+  // this doesn't pop the on-screen keyboard on mobile (browsers only do that
+  // in response to a real tap), so it's safe on both desktop and mobile.
   useEffect(() => {
     const first = puzzle.words[0];
-    if (first) moveTo(first.row, first.col, first.direction, { skipFocus: true });
+    if (first) moveTo(first.row, first.col, first.direction);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [puzzle]);
 
@@ -237,7 +238,18 @@ export default function CrosswordGame() {
         focusHiddenInput();
         return;
       }
-      moveTo(row, col);
+
+      // Jump to the START of whichever word this cell belongs to (keeping
+      // the current direction if it's valid here, else switching) instead
+      // of landing on the exact cell clicked — so selecting a word always
+      // begins reading it from its first letter.
+      const { hasAcross, hasDown } = wordDirectionsAt(row, col);
+      let dir = directionRef.current;
+      if (dir === "across" && !hasAcross) dir = hasDown ? "down" : "across";
+      else if (dir === "down" && !hasDown) dir = hasAcross ? "across" : "down";
+      const word = puzzleRef.current.words.find((w) => w.direction === dir && wordContains(w, row, col));
+      if (word) moveTo(word.row, word.col, dir);
+      else moveTo(row, col, dir);
     },
     [isBlockedAt, wordDirectionsAt, moveTo, focusHiddenInput]
   );
