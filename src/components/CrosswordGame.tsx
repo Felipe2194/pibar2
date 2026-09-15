@@ -42,12 +42,21 @@ export default function CrosswordGame() {
   const [submitStatus, setSubmitStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [leaderboardVersion, setLeaderboardVersion] = useState(0);
 
-  // Refs mirror `selected`/`direction` so event handlers always read the latest
-  // value synchronously, instead of a stale closure or a value that's still
-  // mid-flight through React's state queue (see moveTo / handleCellMouseDown).
+  // Refs mirror `selected`/`direction`/`puzzle`/`userInput` so the single hidden
+  // input's event handlers always read the latest value synchronously, without
+  // needing to resubscribe the DOM focus target for every keystroke.
   const selectedRef = useRef<Cell | null>(null);
   const directionRef = useRef<Direction>("across");
-  const inputRefs = useRef<(HTMLInputElement | null)[][]>([]);
+  const puzzleRef = useRef(puzzle);
+  const userInputRef = useRef(userInput);
+  const hiddenInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    puzzleRef.current = puzzle;
+  }, [puzzle]);
+  useEffect(() => {
+    userInputRef.current = userInput;
+  }, [userInput]);
 
   const resetPuzzle = useCallback(() => {
     const next = generateCrossword({ wordCount: 10 });
@@ -74,14 +83,12 @@ export default function CrosswordGame() {
 
   const isBlocked = useCallback((row: number, col: number) => puzzle.solution[row]?.[col] == null, [puzzle]);
 
-  const wordDirectionsAt = useCallback(
-    (row: number, col: number) => {
-      const hasAcross = puzzle.words.some((w) => w.direction === "across" && wordContains(w, row, col));
-      const hasDown = puzzle.words.some((w) => w.direction === "down" && wordContains(w, row, col));
-      return { hasAcross, hasDown };
-    },
-    [puzzle.words]
-  );
+  const wordDirectionsAt = useCallback((row: number, col: number) => {
+    const p = puzzleRef.current;
+    const hasAcross = p.words.some((w) => w.direction === "across" && wordContains(w, row, col));
+    const hasDown = p.words.some((w) => w.direction === "down" && wordContains(w, row, col));
+    return { hasAcross, hasDown };
+  }, []);
 
   const activeWord = useMemo(() => {
     if (!selected) return null;
@@ -104,16 +111,45 @@ export default function CrosswordGame() {
     return set;
   }, [activeWord]);
 
-  const focusCell = useCallback((row: number, col: number) => {
-    inputRefs.current[row]?.[col]?.focus();
+  const isWordSolved = useCallback(
+    (w: PlacedWord) => {
+      for (let i = 0; i < w.word.length; i++) {
+        const r = w.direction === "down" ? w.row + i : w.row;
+        const c = w.direction === "across" ? w.col + i : w.col;
+        if ((userInput[r]?.[c] ?? "") !== w.word[i]) return false;
+      }
+      return true;
+    },
+    [userInput]
+  );
+
+  const focusHiddenInput = useCallback(() => {
+    hiddenInputRef.current?.focus();
   }, []);
+
+  const isBlockedAt = useCallback(
+    (row: number, col: number) => puzzleRef.current.solution[row]?.[col] == null,
+    []
+  );
+
+  const step = useCallback((row: number, col: number, dr: number, dc: number): Cell | null => {
+    const p = puzzleRef.current;
+    let r = row + dr;
+    let c = col + dc;
+    while (r >= 0 && r < p.rows && c >= 0 && c < p.cols) {
+      if (!isBlockedAt(r, c)) return { row: r, col: c };
+      r += dr;
+      c += dc;
+    }
+    return null;
+  }, [isBlockedAt]);
 
   // The only place that changes which cell/direction is active. Never toggles
   // direction on its own — that's reserved for an explicit click on the cell
   // that was already selected (see handleCellMouseDown).
   const moveTo = useCallback(
     (row: number, col: number, forcedDirection?: Direction) => {
-      if (isBlocked(row, col)) return;
+      if (isBlockedAt(row, col)) return;
       let nextDir = forcedDirection ?? directionRef.current;
       if (!forcedDirection) {
         const { hasAcross, hasDown } = wordDirectionsAt(row, col);
@@ -124,17 +160,15 @@ export default function CrosswordGame() {
       selectedRef.current = { row, col };
       setDirection(nextDir);
       setSelected({ row, col });
-      focusCell(row, col);
+      focusHiddenInput();
     },
-    [isBlocked, wordDirectionsAt, focusCell]
+    [isBlockedAt, wordDirectionsAt, focusHiddenInput]
   );
 
-  // Mousedown (not click/focus) so we can read selectedRef *before* the browser's
-  // own focus-on-click behavior would otherwise beat us to updating it.
   const handleCellMouseDown = useCallback(
     (row: number, col: number, e: React.MouseEvent) => {
       e.preventDefault();
-      if (isBlocked(row, col)) return;
+      if (isBlockedAt(row, col)) return;
       const isSame = sameCell(selectedRef.current, { row, col });
       if (isSame) {
         const { hasAcross, hasDown } = wordDirectionsAt(row, col);
@@ -143,32 +177,21 @@ export default function CrosswordGame() {
           directionRef.current = toggled;
           setDirection(toggled);
         }
-        focusCell(row, col);
+        focusHiddenInput();
         return;
       }
       moveTo(row, col);
     },
-    [isBlocked, wordDirectionsAt, moveTo, focusCell]
+    [isBlockedAt, wordDirectionsAt, moveTo, focusHiddenInput]
   );
 
-  const step = useCallback(
-    (row: number, col: number, dr: number, dc: number): Cell | null => {
-      let r = row + dr;
-      let c = col + dc;
-      while (r >= 0 && r < puzzle.rows && c >= 0 && c < puzzle.cols) {
-        if (!isBlocked(r, c)) return { row: r, col: c };
-        r += dr;
-        c += dc;
-      }
-      return null;
-    },
-    [puzzle.rows, puzzle.cols, isBlocked]
-  );
-
-  const handleLetter = useCallback(
-    (row: number, col: number, raw: string) => {
+  const handleLetterInput = useCallback(
+    (raw: string) => {
+      const cell = selectedRef.current;
+      if (!cell) return;
       const letter = raw.slice(-1).toUpperCase();
       if (!LETTER_REGEX.test(letter)) return;
+      const { row, col } = cell;
       setUserInput((prev) => {
         const next = prev.map((r) => [...r]);
         next[row][col] = letter;
@@ -183,34 +206,36 @@ export default function CrosswordGame() {
     [step, moveTo]
   );
 
-  const handleBackspace = useCallback(
-    (row: number, col: number) => {
-      if (userInput[row]?.[col]) {
-        setUserInput((prev) => {
-          const next = prev.map((r) => [...r]);
-          next[row][col] = "";
-          return next;
-        });
-        return;
-      }
-      const dir = directionRef.current;
-      const dr = dir === "down" ? -1 : 0;
-      const dc = dir === "across" ? -1 : 0;
-      const prevCell = step(row, col, dr, dc);
-      if (prevCell) {
-        setUserInput((prev) => {
-          const next = prev.map((r) => [...r]);
-          next[prevCell.row][prevCell.col] = "";
-          return next;
-        });
-        moveTo(prevCell.row, prevCell.col, dir);
-      }
-    },
-    [userInput, step, moveTo]
-  );
+  const handleBackspace = useCallback(() => {
+    const cell = selectedRef.current;
+    if (!cell) return;
+    const { row, col } = cell;
+    if (userInputRef.current[row]?.[col]) {
+      setUserInput((prev) => {
+        const next = prev.map((r) => [...r]);
+        next[row][col] = "";
+        return next;
+      });
+      return;
+    }
+    const dir = directionRef.current;
+    const dr = dir === "down" ? -1 : 0;
+    const dc = dir === "across" ? -1 : 0;
+    const prevCell = step(row, col, dr, dc);
+    if (prevCell) {
+      setUserInput((prev) => {
+        const next = prev.map((r) => [...r]);
+        next[prevCell.row][prevCell.col] = "";
+        return next;
+      });
+      moveTo(prevCell.row, prevCell.col, dir);
+    }
+  }, [step, moveTo]);
 
-  const handleArrow = useCallback(
-    (row: number, col: number, key: string) => {
+  const handleArrowKey = useCallback(
+    (key: string) => {
+      const cell = selectedRef.current;
+      if (!cell) return;
       const map: Record<string, [number, number, Direction]> = {
         ArrowLeft: [0, -1, "across"],
         ArrowRight: [0, 1, "across"],
@@ -220,11 +245,22 @@ export default function CrosswordGame() {
       const entry = map[key];
       if (!entry) return;
       const [dr, dc, dir] = entry;
-      const nextCell = step(row, col, dr, dc);
+      const nextCell = step(cell.row, cell.col, dr, dc);
       if (nextCell) moveTo(nextCell.row, nextCell.col, dir);
     },
     [step, moveTo]
   );
+
+  const toggleDirectionInPlace = useCallback(() => {
+    const cell = selectedRef.current;
+    if (!cell) return;
+    const { hasAcross, hasDown } = wordDirectionsAt(cell.row, cell.col);
+    if (hasAcross && hasDown) {
+      const toggled: Direction = directionRef.current === "across" ? "down" : "across";
+      directionRef.current = toggled;
+      setDirection(toggled);
+    }
+  }, [wordDirectionsAt]);
 
   useEffect(() => {
     if (solved) return;
@@ -287,10 +323,42 @@ export default function CrosswordGame() {
           </button>
         </div>
 
-        <div className="w-full overflow-x-auto">
+        <div className="relative w-full overflow-x-auto">
+          {/* Single always-focused input driving all keyboard entry. Grid cells
+              below are plain divs — no per-cell input, so focus never bounces
+              between elements and can't fight with our own selection state. */}
+          <input
+            ref={hiddenInputRef}
+            value=""
+            onChange={(e) => {
+              const val = e.target.value;
+              e.currentTarget.value = "";
+              if (val) handleLetterInput(val);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Backspace") {
+                e.preventDefault();
+                handleBackspace();
+              } else if (e.key === " ") {
+                e.preventDefault();
+                toggleDirectionInPlace();
+              } else if (e.key.startsWith("Arrow")) {
+                e.preventDefault();
+                handleArrowKey(e.key);
+              }
+            }}
+            inputMode="text"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            autoCapitalize="characters"
+            aria-hidden="true"
+            className="sr-only"
+          />
+
           <div
-            className="mx-auto grid w-fit touch-manipulation gap-[2px] rounded-md bg-violet-200 p-[2px] dark:bg-violet-800/70"
-            style={{ gridTemplateColumns: `repeat(${puzzle.cols}, minmax(1.5rem, 2.2rem))` }}
+            className="mx-auto grid w-fit touch-manipulation gap-[3px] rounded-md bg-violet-200 p-[3px] dark:bg-violet-800/70"
+            style={{ gridTemplateColumns: `repeat(${puzzle.cols}, minmax(1.9rem, 3.4rem))` }}
           >
             {Array.from({ length: puzzle.rows }).map((_, r) =>
               Array.from({ length: puzzle.cols }).map((_, c) => {
@@ -308,47 +376,39 @@ export default function CrosswordGame() {
                 return (
                   <div
                     key={`${r}-${c}`}
-                    className={`relative aspect-square ${
+                    onMouseDown={(e) => {
+                      handleCellMouseDown(r, c, e);
+                    }}
+                    className={`relative aspect-square cursor-pointer select-none ${
                       isSelected
-                        ? "bg-violet-300 dark:bg-violet-500"
+                        ? "bg-violet-500 ring-2 ring-inset ring-violet-900 dark:bg-violet-400 dark:ring-violet-100"
                         : isWrong
                           ? "bg-rose-100 dark:bg-rose-900/50"
                           : isHighlighted
-                            ? "bg-violet-100 dark:bg-violet-900/40"
+                            ? "bg-violet-100 dark:bg-violet-800/60"
                             : "bg-white dark:bg-zinc-900"
                     }`}
                   >
-                    {number && <span className="pointer-events-none absolute left-0.5 top-0 text-[0.55rem] leading-none text-zinc-500">{number}</span>}
-                    <input
-                      ref={(el) => {
-                        inputRefs.current[r] ??= [];
-                        inputRefs.current[r][c] = el;
-                      }}
-                      value={value}
-                      onChange={(e) => handleLetter(r, c, e.target.value)}
-                      onMouseDown={(e) => handleCellMouseDown(r, c, e)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Backspace") {
-                          e.preventDefault();
-                          handleBackspace(r, c);
-                        } else if (e.key === " ") {
-                          e.preventDefault();
-                          handleCellMouseDown(r, c, e as unknown as React.MouseEvent);
-                        } else if (e.key.startsWith("Arrow")) {
-                          e.preventDefault();
-                          handleArrow(r, c, e.key);
-                        }
-                      }}
-                      maxLength={1}
-                      inputMode="text"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      autoCapitalize="characters"
-                      className={`h-full w-full bg-transparent text-center font-mono text-base font-semibold uppercase outline-none ${
-                        isWrong ? "text-rose-700 dark:text-rose-300" : "text-zinc-900 dark:text-zinc-50"
+                    {number && (
+                      <span
+                        className={`pointer-events-none absolute left-0.5 top-0 text-[0.6rem] leading-none ${
+                          isSelected ? "text-violet-950 dark:text-violet-950" : "text-zinc-400"
+                        }`}
+                      >
+                        {number}
+                      </span>
+                    )}
+                    <span
+                      className={`flex h-full w-full items-center justify-center font-mono text-xl font-bold uppercase sm:text-2xl ${
+                        isSelected
+                          ? "text-white dark:text-violet-950"
+                          : isWrong
+                            ? "text-rose-700 dark:text-rose-300"
+                            : "text-zinc-900 dark:text-zinc-50"
                       }`}
-                    />
+                    >
+                      {value}
+                    </span>
                   </div>
                 );
               })
@@ -388,9 +448,21 @@ export default function CrosswordGame() {
 
       <div className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
         <div className="rounded-lg border border-violet-200 bg-white p-4 dark:border-violet-800 dark:bg-violet-950/40">
-          <ClueColumn title="Horizontales" clues={acrossClues} activeWord={activeWord} onSelect={(w) => moveTo(w.row, w.col, "across")} />
+          <ClueColumn
+            title="Horizontales"
+            clues={acrossClues}
+            activeWord={activeWord}
+            isWordSolved={isWordSolved}
+            onSelect={(w) => moveTo(w.row, w.col, "across")}
+          />
           <div className="my-4 border-t border-violet-100 dark:border-violet-800" />
-          <ClueColumn title="Verticales" clues={downClues} activeWord={activeWord} onSelect={(w) => moveTo(w.row, w.col, "down")} />
+          <ClueColumn
+            title="Verticales"
+            clues={downClues}
+            activeWord={activeWord}
+            isWordSolved={isWordSolved}
+            onSelect={(w) => moveTo(w.row, w.col, "down")}
+          />
         </div>
 
         <Leaderboard refreshKey={leaderboardVersion} />
@@ -403,11 +475,13 @@ function ClueColumn({
   title,
   clues,
   activeWord,
+  isWordSolved,
   onSelect,
 }: {
   title: string;
   clues: PlacedWord[];
   activeWord: PlacedWord | null;
+  isWordSolved: (w: PlacedWord) => boolean;
   onSelect: (w: PlacedWord) => void;
 }) {
   return (
@@ -416,17 +490,22 @@ function ClueColumn({
       <ol className="flex flex-col gap-1 text-sm">
         {clues.map((w) => {
           const isActive = !!activeWord && activeWord.direction === w.direction && activeWord.row === w.row && activeWord.col === w.col;
+          const solved = isWordSolved(w);
           return (
             <li key={`${w.direction}-${w.number}`}>
               <button
                 onClick={() => onSelect(w)}
-                className={`w-full rounded px-2 py-1 text-left transition-colors ${
+                className={`flex w-full items-start gap-1.5 rounded px-2 py-1 text-left transition-colors ${
                   isActive
                     ? "bg-violet-100 font-semibold text-violet-700 dark:bg-violet-900/60 dark:text-violet-200"
-                    : "text-zinc-700 hover:bg-violet-50 dark:text-zinc-300 dark:hover:bg-violet-900/30"
+                    : solved
+                      ? "text-zinc-400 line-through decoration-violet-400 dark:text-zinc-500"
+                      : "text-zinc-700 hover:bg-violet-50 dark:text-zinc-300 dark:hover:bg-violet-900/30"
                 }`}
               >
-                <span className="font-semibold">{w.number}.</span> {w.clue}
+                <span className="font-semibold">{w.number}.</span>
+                <span>{w.clue}</span>
+                {solved && <span className="ml-auto shrink-0 text-violet-500">✓</span>}
               </button>
             </li>
           );
