@@ -220,15 +220,29 @@ export function generateCrossword(options: GenerateOptions = {}): CrosswordPuzzl
 
   const candidates = shuffle(bank)
     .map((entry) => ({ ...entry, word: normalizeWord(entry.word) }))
-    .filter((entry) => entry.word.length >= 3 && entry.word.length <= 12);
+    .filter((entry) => entry.word.length >= 3 && entry.word.length <= 13);
 
-  // Bias toward longer words first so the grid has good crossing spines,
-  // but keep some randomness by shuffling within length buckets.
-  candidates.sort((a, b) => b.word.length - a.word.length);
+  // Seed with a reasonably long word (picked from a random sample, not the
+  // single longest in the whole bank) so the grid starts with a good spine
+  // to cross into — but otherwise keep the shuffle order as-is. Sorting every
+  // candidate by length would flood each puzzle with whichever handful of
+  // words happen to be longest in the bank, ballooning the grid.
+  if (candidates.length > 1) {
+    const seedPoolSize = Math.min(15, candidates.length);
+    let seedIndex = 0;
+    for (let i = 1; i < seedPoolSize; i++) {
+      if (candidates[i].word.length > candidates[seedIndex].word.length) seedIndex = i;
+    }
+    const [seed] = candidates.splice(seedIndex, 1);
+    candidates.unshift(seed);
+  }
 
   const grid = new Map<string, SparseCell>();
   const placedWords: { word: string; clue: string; row: number; col: number; direction: Direction }[] = [];
   const usedWords = new Set<string>();
+  const LONG_WORD_LENGTH = 9;
+  const MAX_LONG_WORDS = 3;
+  let longWordCount = 0;
 
   for (const candidate of candidates) {
     if (placedWords.length >= wordCount) break;
@@ -238,8 +252,16 @@ export function generateCrossword(options: GenerateOptions = {}): CrosswordPuzzl
       place(grid, candidate.word, 0, 0, "across");
       placedWords.push({ word: candidate.word, clue: candidate.clue, row: 0, col: 0, direction: "across" });
       usedWords.add(candidate.word);
+      if (candidate.word.length >= LONG_WORD_LENGTH) longWordCount++;
       continue;
     }
+
+    const isLong = candidate.word.length >= LONG_WORD_LENGTH;
+    const remainingSlots = wordCount - placedWords.length;
+    const remainingCandidates = candidates.length - candidates.indexOf(candidate);
+    // Skip extra long words once we've placed enough, unless candidates are
+    // running low and we still need more words to hit the target count.
+    if (isLong && longWordCount >= MAX_LONG_WORDS && remainingCandidates > remainingSlots) continue;
 
     const placements = findPlacements(grid, candidate.word);
     if (placements.length === 0) continue;
@@ -256,6 +278,7 @@ export function generateCrossword(options: GenerateOptions = {}): CrosswordPuzzl
       direction: best.direction,
     });
     usedWords.add(candidate.word);
+    if (isLong) longWordCount++;
   }
 
   // Normalize coordinates so the top-left of the bounding box is (0, 0).

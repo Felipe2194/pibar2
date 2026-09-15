@@ -94,4 +94,55 @@ export const FOOTBALL_WORD_BANK: WordClue[] = [
   { word: "URUGUAY", clue: "Ganó el primer Mundial de la historia, en 1930" },
   { word: "ESPAÑA", clue: "Selección campeona del mundo en 2010" },
   { word: "ITALIA", clue: "Selección campeona del mundo en 2006" },
+
+  // Goleadores y premios
+  { word: "MESSI", clue: "Máximo goleador histórico de LaLiga de España" },
+  { word: "SHEARER", clue: "Máximo artillero histórico de la Premier League inglesa" },
+  { word: "PIOLA", clue: "Apellido del máximo goleador de la historia de la Serie A italiana" },
+  { word: "PALERMO", clue: "Máximo goleador histórico de Boca Juniors, 'El Titán'" },
+  { word: "LABRUNA", clue: "Máximo artillero histórico de River Plate y de los Superclásicos" },
+  { word: "PICHICHI", clue: "Famoso trofeo y apodo para el máximo goleador de la liga española" },
+
+  // Apodos de jugadores
+  { word: "PULGA", clue: "El apodo clásico de Lionel Messi desde sus inicios" },
+  { word: "DIBU", clue: "Apodo del arquero campeón del mundo Emiliano Martínez" },
+  { word: "FIDEO", clue: "Sobrenombre clásico de Ángel Di María por su físico delgado" },
+
+  // Apodos de clubes argentinos
+  { word: "XENEIZE", clue: "Apodo tradicional de los hinchas y del club Boca Juniors" },
+  { word: "MILLONARIO", clue: "Apodo emblemático con el que se conoce a River Plate" },
+  { word: "PINCHARRATA", clue: "Histórico apodo del club Estudiantes de La Plata" },
+  { word: "CUERVO", clue: "Apodo tradicional de los hinchas de San Lorenzo de Almagro" },
+  { word: "GLOBO", clue: "Apodo característico del club Huracán de Parque Patricios" },
+  { word: "LEPRA", clue: "Sobrenombre histórico con el que se conoce a Newell's Old Boys" },
+  { word: "PIRATA", clue: "Apodo clásico del club Belgrano de Córdoba" },
+  { word: "MATADOR", clue: "Apodo principal con el que se identifica al club Talleres de Córdoba" },
+  { word: "BICHO", clue: "Apodo de Argentinos Juniors, club donde se formó Diego Maradona" },
+  { word: "LOBO", clue: "Apodo histórico del club Gimnasia y Esgrima La Plata" },
+  { word: "CANALLA", clue: "Apodo popular de los hinchas y equipo de Rosario Central" },
+  { word: "FORTIN", clue: "Sobrenombre del estadio del club Vélez Sarsfield" },
+  { word: "LANUS", clue: "Club apodado 'El Granate' por el color característico de su camiseta" },
+
+  // Apodos de clubes europeos
+  { word: "COLCHONEROS", clue: "Apodo tradicional del Atlético de Madrid" },
+  { word: "MERENGUES", clue: "Sobrenombre clásico con el que se conoce al Real Madrid" },
+
+  // Apodos de clubes brasileños
+  { word: "MENGAO", clue: "Popular apodo del club Flamengo de Río de Janeiro" },
+  { word: "TIMAO", clue: "Apodo clásico de la hinchada y el equipo del Corinthians" },
+  { word: "VERDAO", clue: "Sobrenombre con el que se conoce al Palmeiras de Brasil" },
+  { word: "PEIXE", clue: "Apodo del Santos de Brasil, club donde brillaron Pelé y Neymar" },
+  { word: "GALO", clue: "Apodo del Atlético Mineiro, representado por un gallo" },
+  { word: "COLORADO", clue: "Apodo del club Internacional de Porto Alegre por el color de su camiseta" },
+  { word: "RAPOSA", clue: "Apodo del Cruzeiro de Brasil, que significa zorro en portugués" },
+  { word: "TRICOLOR", clue: "Apodo que comparten grandes clubes brasileros como São Paulo y Fluminense" },
+
+  // Campeones y curiosidades
+  { word: "INDEPENDIENTE", clue: "El 'Rey de Copas', club con más Copas Libertadores ganadas" },
+  { word: "MADRID", clue: "Club con mayor cantidad de títulos de UEFA Champions League" },
+  { word: "SEVILLA", clue: "Máximo campeón en la historia de la UEFA Europa League" },
+  { word: "BRASIL", clue: "Única selección que ganó 5 Mundiales de la FIFA" },
+  { word: "URUGUAY", clue: "Junto con Argentina, uno de los máximos ganadores de la Copa América" },
+  { word: "RACING", clue: "Primer club argentino en ganar la Copa Intercontinental (1967)" },
+  { word: "ALUMNI", clue: "Mítico club amateur multicampeón surgido de un colegio inglés" },
 ];
